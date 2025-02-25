@@ -19,7 +19,7 @@ function UserList() {
   useEffect(()=>{
     async function call(){
       try{
-        const userList = await UserService.getUsers()
+        const userList = await UserService.getAll()
         setUsers(userList)      
       }catch(error){
         const msg = error instanceof Error ? error.message : 'Error desconocido'

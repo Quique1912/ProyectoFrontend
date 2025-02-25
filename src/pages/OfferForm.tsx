@@ -4,8 +4,11 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Temporal } from 'temporal-polyfill'
 import toast from 'react-hot-toast'
 import Category from '../models/Category'
-import { OfferService } from '../services/offer.service'
+import InputForm from '../components/InputForm'
+import ErrorMsgData from '../utils/ErrorMsgData'
+import TextAreaInputForm from '../components/TextAreaInputForm'
 import { CategoryService } from '../services/category.service'
+import { OfferService } from '../services/offer.service'
 
 // - formulario de creación de 1 oferta
 // -- Actualizar una oferta
@@ -30,7 +33,8 @@ function OfferForm() {
   const [categorias, setCategorias] = useState<Category[]>()
 
   const {id} = useParams()
-  const [error, setError] = useState<string | null>(null)
+  const [errors, setErrors] = useState<Record<string, string | undefined>>({});
+
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
 
@@ -44,7 +48,7 @@ function OfferForm() {
         published: new Date(data.published || '').toISOString().slice(0,16),
         expired: new Date(data.expired || '').toISOString().slice(0,16)
       }))
-      .catch((error) => setError(error.message))
+      .catch((error) => setErrors(error.message))
       .finally(()=>setLoading(false))
 
     }
@@ -53,13 +57,13 @@ function OfferForm() {
   useEffect(()=>{
     CategoryService.getAll()
       .then(setCategorias)
-      .catch(error => setError(error.message))
+      .catch(error => setErrors(error.message))
   },[])
 
-  const handleSubmit=(e: FormEvent) =>{
+  const handleSubmit=async (e: FormEvent) =>{
     try{
       setLoading(true)
-      setError(null)
+      setErrors({});
       e.preventDefault()
       const formData = {
         ...form,
@@ -68,19 +72,31 @@ function OfferForm() {
         expired: new Date(form.expired || '').toISOString()
       }
       console.log(formData)
-      if(id) OfferService.update(Number(id), formData)
-        else OfferService.create(formData)
+      if(id) await OfferService.update(Number(id), formData)
+        else await OfferService.create(formData)
       toast.success('Oferta guardada correctamente!')
       navigate('/offers')
     }catch(error){
       toast.error('Error al guardar la oferta!')
-      setError(error instanceof Error ? error.message : 'Error desconocido')
+       if(Array.isArray(error)){
+              const errorObj: Record<string, string> = error?.reduce((acc: Record<string, string>, err: unknown) => {
+                const errorDetail = err as ErrorMsgData;
+                acc[errorDetail.path] = errorDetail.msg;
+                return acc;
+              }, {});
+              setErrors(errorObj);
+            }else if(error instanceof Error){
+              const msg = error instanceof Error ? error.message : "Error desconocido"
+              setErrors({message: msg || 'Error desconocido'});
+            }else{
+              setErrors({message: error as string || 'Error desconocido'});
+            }
     }finally{
       setLoading(false)
     }
   }
 
-  const handleChange = (e:ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>{
+  const handleChange = (e:ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>{
     const {value, name} = e.target
     //if(name==='idCategory') valueNew = Number(value) 
     setForm({ ...form, [name]:value,  }) 
@@ -95,52 +111,41 @@ function OfferForm() {
 
   return (
     <div className='text-white flex flex-col'>
-      <h1>Inserción de nueva oferta</h1>
-      <form onSubmit={handleSubmit} className='flex flex-col'>
-      {error && <p>{error}</p>}
-      <label>
-        Titulo: 
-        <input name="title" value={form.title} onChange={handleChange} required/>
-      </label>
+      <h2 className="text-4xl font-extrabold dark:text-white">{id?'Edición de oferta':'Inserción de nueva oferta'}</h2>
 
-      <label>
-        Descripción: 
-        <input name="description" value={form.description} onChange={handleChange}/>
-      </label>
+      <form className="max-w-sm mx-auto min-w-sm" onSubmit={handleSubmit}>
+      
+      <InputForm text="Título" name="title" value={form.title || ''} handleChange={handleChange} error={errors.title} /> 
+      <TextAreaInputForm type="textarea" rows={6} text="Descripción" name="description" value={form.description || ''} handleChange={handleChange} error={errors.description} /> 
+      
+      <InputForm text="Email de contacto" name="contactEmail" value={form.contactEmail || ''} handleChange={handleChange} error={errors.contactEmail} /> 
+      <InputForm text="Localización" name="location" value={form.location || ''} handleChange={handleChange} error={errors.location} /> 
+      
+      <InputForm type="datetime-local" text="Fecha publicación:" name="published" value={form.published || ''} handleChange={handleChange} error={errors.published} /> 
+      <InputForm type="datetime-local" text="Fecha Finalización:" name="expired" value={form.expired || ''} handleChange={handleChange} error={errors.expired} /> 
+      <InputForm type="checkbox" text="Activa" name="active" checked={form.active} handleChange={handleChangeCheckbox} error={errors.active} /> 
 
-      <label>
-        Email de contacto: 
-        <input name="contactEmail" value={form.contactEmail} onChange={handleChange}/>
-      </label>
 
-      <label>
-        Localización: 
-        <input name="location" value={form.location} onChange={handleChange}/>
-      </label>
 
-      <label>
-        Fecha publicación: 
-        <input type="datetime-local" name="published" value={form.published} onChange={handleChange}/>
-      </label>
-
-      <label>
-        Fecha fin de publicación: 
-        <input type="datetime-local" name="expired" value={form.expired} onChange={handleChange}/>
-      </label>
-
-      <label>
-        Activa: 
-        <input type="checkbox" name="active" checked={form.active} onChange={handleChangeCheckbox}/>
-      </label>
-
-      <div>Categoria {form.idCategory}</div>
-      <select className='text-black' name="idCategory" value={form.idCategory || ''} onChange={handleChange}>
+      <label htmlFor="idCategory" className="block mb-2 text-sm font-medium text-gray-900 dark:text-white">Categoría:</label>
+      <select id="idCategory" name='idCategory'  value={form.idCategory ?? ""}
+            onChange={handleChange}
+         className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500">
         <option value="" >Seleciona categoria</option>
-        {categorias?.map(categoria => 
-          <option  key={categoria.id} value={categoria.id}> {categoria.name} </option>
-        )}
+          {categorias?.map(categoria => 
+            <option  key={categoria.id} value={categoria.id}> {categoria.name} </option>
+          )}
       </select>
-      <button>Guardar</button>
+
+   
+      {errors && errors.message && <p className="text-center mt-4 text-red-500">{errors.message}</p>}
+
+      <button
+        type="submit"
+        className="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm w-full sm:w-auto px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800"
+      >
+        Guardar
+      </button>
       </form>
     </div>
   )
